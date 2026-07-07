@@ -1,0 +1,11 @@
+# Pull pre-built image from GitHub Container Registry (see .github/workflows/docker-main.yml).
+# Usage (from deploy/):
+#   docker compose -f docker-compose.local.yml -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.local.yml -f docker-compose.ghcr.yml up -d
+#
+# Or: ./update-ghcr.sh
+
+services:
+  sub2api:
+    image: ${GHCR_IMAGE:-ghcr.io/susigo/sub2api:main}
+    pull_policy: always

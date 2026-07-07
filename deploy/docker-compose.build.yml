@@ -1,0 +1,15 @@
+# Override: build Sub2API image from local repo instead of pulling weishaw/sub2api.
+# Usage (from deploy/):
+#   docker compose -f docker-compose.local.yml -f docker-compose.build.yml up -d --build
+#
+# Update workflow: see deploy/update.sh
+
+services:
+  sub2api:
+    image: sub2api:prod
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.prebuilt
+      args:
+        GOPROXY: https://goproxy.cn,direct
+        GOSUMDB: sum.golang.google.cn
