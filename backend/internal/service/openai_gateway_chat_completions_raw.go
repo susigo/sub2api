@@ -160,10 +160,14 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		}
 	}
 	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
+	if account.Platform == PlatformGrok {
+		// cli-chat-proxy requires x-grok-client-version; bare UA is rejected as "(none)".
+		xai.ApplyCLIClientHeaders(upstreamReq.Header)
+		if customUA != "" {
+			upstreamReq.Header.Set("User-Agent", customUA)
+		}
+	} else if customUA != "" {
 		upstreamReq.Header.Set("user-agent", customUA)
-	} else if account.Platform == PlatformGrok {
-		upstreamReq.Header.Set("user-agent", "sub2api-grok/1.0")
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效）
