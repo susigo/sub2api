@@ -49,8 +49,7 @@ func (r *GrokTokenRefresher) Refresh(ctx context.Context, account *Account) (map
 	}
 	newCredentials := r.grokOAuthService.BuildAccountCredentials(tokenInfo)
 	newCredentials = MergeCredentials(account.Credentials, newCredentials)
-	if baseURL := strings.TrimSpace(account.GetCredential("base_url")); baseURL != "" {
-		newCredentials["base_url"] = baseURL
-	}
+	// Normalize so legacy api.x.ai OAuth credentials heal on refresh.
+	newCredentials["base_url"] = account.GetGrokBaseURL()
 	return newCredentials, nil
 }

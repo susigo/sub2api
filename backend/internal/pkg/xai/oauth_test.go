@@ -116,6 +116,15 @@ func TestValidateXAIURLsAllowOfficialOAuthAndGatewayHosts(t *testing.T) {
 	require.Equal(t, DefaultCLIBaseURL+"/chat/completions", chatURL)
 }
 
+func TestEffectiveOAuthBaseURL(t *testing.T) {
+	require.Equal(t, DefaultCLIBaseURL, EffectiveOAuthBaseURL(""))
+	require.Equal(t, DefaultCLIBaseURL, EffectiveOAuthBaseURL("https://api.x.ai/v1"))
+	require.Equal(t, DefaultCLIBaseURL, EffectiveOAuthBaseURL("https://api.x.ai/v1/"))
+	require.Equal(t, DefaultCLIBaseURL, EffectiveOAuthBaseURL("https://api.x.ai"))
+	require.Equal(t, DefaultCLIBaseURL, EffectiveOAuthBaseURL(DefaultCLIBaseURL))
+	require.Equal(t, "https://custom.example.com/v1", EffectiveOAuthBaseURL("https://custom.example.com/v1/"))
+}
+
 func TestBuildGrokMediaURLs(t *testing.T) {
 	imagesURL, err := BuildImagesGenerationsURL(DefaultBaseURL + "/")
 	require.NoError(t, err)

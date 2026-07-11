@@ -160,6 +160,25 @@ func EffectiveBaseURL(override string) string {
 	return strings.TrimRight(envOrDefault(EnvBaseURL, DefaultBaseURL), "/")
 }
 
+// EffectiveOAuthBaseURL returns the upstream base URL for Grok OAuth/subscription
+// accounts. Empty or legacy developer API credentials fall back to cli-chat-proxy.
+func EffectiveOAuthBaseURL(stored string) string {
+	normalized := strings.TrimRight(strings.TrimSpace(stored), "/")
+	if normalized == "" || isLegacyDeveloperAPIBaseURL(normalized) {
+		return DefaultCLIBaseURL
+	}
+	return normalized
+}
+
+func isLegacyDeveloperAPIBaseURL(normalized string) bool {
+	switch normalized {
+	case DefaultBaseURL, "https://api.x.ai":
+		return true
+	default:
+		return false
+	}
+}
+
 func ValidatedBaseURL(override string) (string, error) {
 	return ValidateBaseURL(EffectiveBaseURL(override))
 }

@@ -53,3 +53,16 @@ describe('useGrokOAuth.exchangeAuthCode', () => {
     )
   })
 })
+
+describe('useGrokOAuth.buildCredentials', () => {
+  it('defaults OAuth base_url to cli-chat-proxy', () => {
+    const oauth = useGrokOAuth()
+    const credentials = oauth.buildCredentials({
+      access_token: 'access-token',
+      token_type: 'Bearer',
+      expires_at: '2099-01-01T00:00:00Z'
+    } as any)
+
+    expect(credentials.base_url).toBe('https://cli-chat-proxy.grok.com/v1')
+  })
+})

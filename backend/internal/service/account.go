@@ -1255,12 +1255,13 @@ func (a *Account) GetGrokBaseURL() string {
 		return ""
 	}
 	baseURL := a.GetCredential("base_url")
+	// Free Build / OAuth accounts talk to cli-chat-proxy, not api.x.ai.
+	// Also remap legacy credentials that incorrectly stored the developer API URL.
+	if a.IsGrokOAuth() {
+		return xai.EffectiveOAuthBaseURL(baseURL)
+	}
 	if baseURL != "" {
 		return baseURL
-	}
-	// Free Build / OAuth accounts talk to cli-chat-proxy, not api.x.ai.
-	if a.IsGrokOAuth() {
-		return xai.DefaultCLIBaseURL
 	}
 	return xai.DefaultBaseURL
 }
