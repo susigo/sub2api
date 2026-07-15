@@ -617,6 +617,103 @@ func TestEnsureOpenAIResponsesImageGenerationTool_PreservesExistingImageTool(t *
 	require.Equal(t, "webp", tool["output_format"])
 }
 
+func TestEnsureOpenAIResponsesImageGenerationTool_ReplacesImageGenNamespace(t *testing.T) {
+	// Newer Codex clients advertise local image_gen.imagegen on every turn.
+	// Bridge injection must replace that namespace with hosted image_generation,
+	// otherwise OpenAI returns:
+	// Function 'image_gen.imagegen' conflicts with a hosted tool in the same request.
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"},
+			map[string]any{
+				"type": "namespace",
+				"name": "image_gen",
+				"tools": []any{
+					map[string]any{"type": "function", "name": "imagegen"},
+				},
+			},
+		},
+		"input": []any{
+			map[string]any{
+				"type": "additional_tools",
+				"tools": []any{
+					map[string]any{
+						"type": "namespace",
+						"name": "image_gen",
+						"tools": []any{
+							map[string]any{"type": "function", "name": "imagegen"},
+						},
+					},
+					map[string]any{"type": "namespace", "name": "code_tools"},
+				},
+			},
+		},
+		"tool_choice": map[string]any{"type": "namespace", "name": "image_gen"},
+	}
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+	require.NotContains(t, reqBody, "tool_choice")
+	require.True(t, hasHostedOpenAIImageGenerationTool(reqBody))
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "shell", first["name"])
+	second, ok := tools[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", second["type"])
+	require.Equal(t, "png", second["output_format"])
+
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		require.True(t, ok)
+		require.False(t, isImageGenNamespaceToolMap(toolMap))
+	}
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+	additionalToolsItem, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	additionalTools, ok := additionalToolsItem["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, additionalTools, 1)
+	remaining, ok := additionalTools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "code_tools", remaining["name"])
+}
+
+func TestEnsureOpenAIResponsesImageGenerationTool_StripsNamespaceWhenHostedAlreadyPresent(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "webp"},
+			map[string]any{
+				"type": "namespace",
+				"name": "image_gen",
+				"tools": []any{
+					map[string]any{"type": "function", "name": "imagegen"},
+				},
+			},
+		},
+	}
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", tool["type"])
+	require.Equal(t, "webp", tool["output_format"])
+}
+
 func TestApplyCodexImageGenerationBridgeInstructions_AppendsBridgeOnce(t *testing.T) {
 	reqBody := map[string]any{
 		"model":        "gpt-5.4",

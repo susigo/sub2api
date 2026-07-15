@@ -831,6 +831,125 @@ func normalizeOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
 	return modified
 }
 
+// stripOpenAIImageGenNamespaceTools removes Codex local image_gen.imagegen
+// declarations while leaving the hosted image_generation tool intact.
+// OpenAI rejects both in one request:
+// "Function 'image_gen.imagegen' conflicts with a hosted tool in the same request."
+func stripOpenAIImageGenNamespaceTools(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+	modified := stripOpenAIImageGenNamespaceToolList(reqBody, "tools")
+	if stripOpenAIImageGenNamespaceToolsFromInput(reqBody) {
+		modified = true
+	}
+	if openAIAnyToolChoiceSelectsImageGeneration(reqBody["tool_choice"]) {
+		// Namespace tool_choice would still point at the removed local tool.
+		// Clearing lets the bridge fall back to tool_choice=auto.
+		delete(reqBody, "tool_choice")
+		modified = true
+	}
+	return modified
+}
+
+func stripOpenAIImageGenNamespaceToolList(container map[string]any, key string) bool {
+	rawTools, ok := container[key]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+	filtered := make([]any, 0, len(tools))
+	removed := false
+	for _, rawTool := range tools {
+		if toolMap, ok := rawTool.(map[string]any); ok && isImageGenNamespaceToolMap(toolMap) {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, rawTool)
+	}
+	if !removed {
+		return false
+	}
+	if len(filtered) == 0 {
+		delete(container, key)
+	} else {
+		container[key] = filtered
+	}
+	return true
+}
+
+func stripOpenAIImageGenNamespaceToolsFromInput(reqBody map[string]any) bool {
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return false
+	}
+
+	filteredInput := make([]any, 0, len(input))
+	modified := false
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			filteredInput = append(filteredInput, rawItem)
+			continue
+		}
+		if !stripOpenAIImageGenNamespaceToolList(item, "tools") {
+			filteredInput = append(filteredInput, rawItem)
+			continue
+		}
+		modified = true
+		if _, hasTools := item["tools"]; hasTools {
+			filteredInput = append(filteredInput, rawItem)
+		}
+	}
+	if modified {
+		reqBody["input"] = filteredInput
+	}
+	return modified
+}
+
+func hasHostedOpenAIImageGenerationTool(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+	if toolsContainHostedImageGeneration(reqBody["tools"]) {
+		return true
+	}
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rawItem := range input {
+		item, ok := rawItem.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(item["type"])) != "additional_tools" {
+			continue
+		}
+		if toolsContainHostedImageGeneration(item["tools"]) {
+			return true
+		}
+	}
+	return false
+}
+
+func toolsContainHostedImageGeneration(rawTools any) bool {
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		if isOpenAIImageGenerationType(firstNonEmptyString(toolMap["type"])) {
+			return true
+		}
+	}
+	return false
+}
+
 func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	if len(reqBody) == 0 {
 		return false
@@ -839,9 +958,17 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 		return false
 	}
 
+	// Newer Codex clients always advertise local image_gen.imagegen. Injecting
+	// the hosted image_generation tool beside it makes OpenAI reject every turn.
+	modified := stripOpenAIImageGenNamespaceTools(reqBody)
+
 	tool := map[string]any{
 		"type":          "image_generation",
 		"output_format": "png",
+	}
+
+	if hasHostedOpenAIImageGenerationTool(reqBody) {
+		return modified
 	}
 
 	rawTools, ok := reqBody["tools"]
@@ -854,15 +981,6 @@ func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
 	if !ok {
 		reqBody["tools"] = []any{tool}
 		return true
-	}
-	for _, rawTool := range tools {
-		toolMap, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
-			return false
-		}
 	}
 
 	reqBody["tools"] = append(tools, tool)
